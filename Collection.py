@@ -8,7 +8,7 @@ port = 22                   # Target Port
 user = 'root'               # account's username (Target System)
 password = "fa"             # account's password (Target System)
 
-remote_path = '/root/dmhc_app/oni/'
+remote_paths = ['/root/dmhc_app/oni/*.oni', '/root/dmhc_app/video/*.bin']
 local_path = os.path.abspath('../download')
 
 
@@ -23,25 +23,26 @@ def ssh_scp_get(ip, port, user, password, remote_path, local_path):
         try:
             #connect to target
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            print('Connecting To Target')
             ssh.connect(ip, port, 'root', password)
             sftp = paramiko.SFTPClient.from_transport(ssh.get_transport())
-            print("Checking whether any files exists")
-            #get files can be downloaded
-            remote_files = sftp.listdir(remote_path)
-            for file in remote_files:   #iterate all files
-                print("Downloading " + file)
-                local_file = os.path.join(local_path, file)
-                remote_file = os.path.join(remote_path, file)
-                sftp.get(remote_file, local_file, callback=progress_bar)
-                print("")
-                #delete downloaded file
-                ssh.exec_command('rm -r "' + remote_file + '"')
-        except:
-            print("Error Happend")
+            for remote_path in remote_paths:
+                # Check whether any file can be downloaded
+                stdin, stdout, stderr = ssh.exec_command('find ' + remote_path + ' -mmin +1 -exec basename {} \;')
+                stdout, stderr = stdout.read().decode(), stderr.read().decode() 
+
+                remote_files = list(filter(None, stdout.split('\n')))
+                for file in remote_files:
+                    # Download File
+                    local_file = os.path.join(local_path, file)
+                    remote_file = os.path.join(os.path.dirname(remote_path), file)
+
+                    sftp.get(remote_file, local_file, callback=progress_bar)
+
+                    # Remove Downloaded File
+                    ssh.exec_command('rm -r "' + remote_file + '"')
+        except Exception as e:
+            print("Error Happend:" +str(e))
         ssh.close()
-        print("Finished Downloading")
-        print("Sleeping for 2 minutes")
-        time.sleep(60 * 2)
+        time.sleep(10)
 
 ssh_scp_get(ip, port, user, password, remote_path, local_path)
